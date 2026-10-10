@@ -31,6 +31,13 @@ function trySetIcon(el: HTMLElement, id: string): boolean {
   return hasDrawableIconContent(el);
 }
 
+// Last fallback decision, exposed for on-device diagnostics.
+let lastDecision = 'none';
+
+export function getLastIconDecision(): string {
+  return lastDecision;
+}
+
 export function setIconWithFallback(
   el: HTMLElement,
   iconId: string | undefined,
@@ -43,8 +50,14 @@ export function setIconWithFallback(
   // what setIcon() actually produced on this device, so it always agrees
   // with reality.
   const id = (iconId ?? '').trim();
-  if (id && trySetIcon(el, id)) return;
-  if (trySetIcon(el, FALLBACK_ICON_ID)) return;
+  if (id && trySetIcon(el, id)) {
+    lastDecision = `ok:${id}`;
+    return;
+  }
+  if (trySetIcon(el, FALLBACK_ICON_ID)) {
+    lastDecision = `fallback-circle:${id}`;
+    return;
+  }
 
   // Last resort: a short text label so the button is never blank.
   try {
@@ -55,7 +68,10 @@ export function setIconWithFallback(
   const label = (fallbackText ?? '').trim().slice(0, 2);
   if (label) {
     el.createSpan({ cls: 'smartpick-icon-fallback-text', text: label });
+    lastDecision = `fallback-text:${id}`;
+    return;
   }
+  lastDecision = `blank:${id}`;
 }
 
 export interface ToolbarIconAudit {

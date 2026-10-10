@@ -355,14 +355,15 @@ export class ToolbarUI {
     const tooltip = item.isBuiltin
       ? getBuiltinToolbarItemLabel(item.id, item.tooltip)
       : item.tooltip;
-    
+
+    // Set icon FIRST (with fallback), before tooltip wiring, so a tooltip
+    // failure can never leave the button blank.
+    setIconWithFallback(button, item.icon, tooltip);
+
     button.setAttribute('aria-label', tooltip);
     button.setAttribute('data-tooltip', tooltip);
     button.title = tooltip;
     setTooltip(button, tooltip, { placement: 'bottom', delay: 40 });
-
-    // Set icon (with fallback: older apps, e.g. Android, may lack newer icon ids)
-    setIconWithFallback(button, item.icon, tooltip);
 
     // Add AI indicator
     if (item.type === 'ai') {

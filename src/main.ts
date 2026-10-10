@@ -7,6 +7,7 @@ import { localize } from './i18n';
 import { Toolbar } from './toolbar/Toolbar';
 import { SmartPickSettingTab } from './ui/SettingsTab';
 import { CommandManager } from './commands/CommandManager';
+import { getLastIconDecision } from './ui/icons';
 
 const CURRENT_MIGRATION_VERSION = 3;
 const REMOVED_BUILTIN_TOOLBAR_ITEM_IDS = new Set([
@@ -602,6 +603,7 @@ export default class SmartPickPlugin extends Plugin {
             for (const id of DIAGNOSTIC_PROBE_ICON_IDS) {
                 lines.push(probeDiagnosticIcon(id));
             }
+            lines.push(`lastIcon=${getLastIconDecision()}`);
             if (this.toolbar) {
                 lines.push(...this.toolbar.getDebugLines());
             } else {
