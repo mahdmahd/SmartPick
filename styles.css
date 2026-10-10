@@ -5,6 +5,13 @@
   pointer-events: auto;
   position: absolute;
   z-index: 1000;
+  color: var(--text-normal);
+}
+
+/* Viewport-fixed mounting (used for the PDF reader floating toolbar so it
+   escapes the PDF.js viewer container and its CSS) */
+.smartpick-toolbar-container-fixed {
+  position: fixed;
 }
 
 .smartpick-toolbar-container-mobile {

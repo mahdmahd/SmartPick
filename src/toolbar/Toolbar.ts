@@ -5,7 +5,7 @@ import type { EditorPosition, WorkspaceLeaf } from 'obsidian';
 import type SmartPickPlugin from '../main';
 import { ToolbarUI } from './ToolbarUI';
 import { PdfToolbarIntegration } from './PdfToolbarIntegration';
-import { DRAWING_PRIMITIVE_SELECTOR } from '../ui/icons';
+import { formatToolbarAudit } from '../ui/icons';
 import { t } from '../i18n';
 
 export type SmartPickSelectionSource = 'markdown' | 'pdf' | null;
@@ -305,7 +305,8 @@ export class Toolbar {
     const pos = this.getPdfSelectionCoords(view, rect);
     const hostEl = this.getPdfHostEl(view);
     if (pos && hostEl) {
-      this.ui.show(pos, true, hostEl);
+      // viewport-fixed 挂载：脱离 PDF 阅读器容器的 CSS 影响。
+      this.ui.show(pos, true, hostEl, true);
       this.isVisible = true;
     } else {
       this.hide();
@@ -799,24 +800,13 @@ export class Toolbar {
   getDebugLines(): string[] {
     const lines = [
       `sel=${this.currentSelection.length} src=${this.currentSource ?? 'none'} visible=${this.isVisible ? 1 : 0}`,
+      `lastRender=${this.ui.getLastAudit()}`,
     ];
     const bars = activeDocument.querySelectorAll('.smartpick-toolbar');
     lines.push(`bars=${bars.length}`);
     bars.forEach((bar, i) => {
-      const btns = bar.querySelectorAll('button.smartpick-toolbar-button');
-      let svg = 0;
-      let prim = 0;
-      let txt = 0;
-      let empty = 0;
-      btns.forEach((b) => {
-        const s = b.querySelector('svg');
-        if (s) svg++;
-        if (s?.querySelector(DRAWING_PRIMITIVE_SELECTOR)) prim++;
-        if (b.querySelector('.smartpick-icon-fallback-text')) txt++;
-        if (!s && !b.querySelector('.smartpick-icon-fallback-text') && ((b.textContent ?? '').trim() === '')) empty++;
-      });
       const shown = (bar as HTMLElement).offsetParent !== null ? 1 : 0;
-      lines.push(`bar${i}: btns=${btns.length} svg=${svg} prim=${prim} txt=${txt} empty=${empty} shown=${shown}`);
+      lines.push(`bar${i}: ${formatToolbarAudit(bar)} shown=${shown}`);
     });
     return lines;
   }

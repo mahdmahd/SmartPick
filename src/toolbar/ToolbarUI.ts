@@ -4,7 +4,7 @@ import { setIcon, setTooltip, FileView, MarkdownView, Platform } from 'obsidian'
 import type SmartPickPlugin from '../main';
 import type { Toolbar } from './Toolbar';
 import type { ToolbarItem } from '../settings';
-import { setIconWithFallback } from '../ui/icons';
+import { setIconWithFallback, formatToolbarAudit } from '../ui/icons';
 import { getBuiltinToolbarItemLabel, localize, t } from '../i18n';
 
 const DESKTOP_VISIBLE_TOOLBAR_BUTTONS = 8;
@@ -57,17 +57,27 @@ export class ToolbarUI {
   private currentPosition: ToolbarPosition | null = null;
   private suppressToolbarClick: boolean = false;
   private currentPlacement: ToolbarPlacement = 'above';
+  private mountedFixed: boolean = false;
+  private lastHostEl?: HTMLElement;
+  private lastFixed: boolean = false;
+  private lastAudit: string = 'none';
 
   constructor(plugin: SmartPickPlugin, toolbar: Toolbar) {
     this.plugin = plugin;
     this.toolbar = toolbar;
   }
 
-  show(pos: ToolbarPosition, hasSelection: boolean = true, hostEl?: HTMLElement): void {
+  show(pos: ToolbarPosition, hasSelection: boolean = true, hostEl?: HTMLElement, fixedToViewport = false): void {
     this.hide();
     this.hasSelection = hasSelection;
     this.currentPosition = pos;
-    this.render(pos, hostEl);
+    this.lastHostEl = hostEl;
+    this.lastFixed = fixedToViewport;
+    this.render(pos, hostEl, fixedToViewport);
+  }
+
+  getLastAudit(): string {
+    return this.lastAudit;
   }
 
   hide(): void {
@@ -78,6 +88,7 @@ export class ToolbarUI {
       this.moreMenuEl = null;
       this.overflowToolbarEl = null;
     }
+    this.mountedFixed = false;
   }
 
   private getHostContentEl(hostOverride?: HTMLElement): HTMLElement | null {
@@ -105,17 +116,22 @@ export class ToolbarUI {
     return null;
   }
 
-  private render(pos: ToolbarPosition, hostOverride?: HTMLElement): void {
-    const hostEl = this.getHostContentEl(hostOverride);
-    if (!hostEl) return;
+  private render(pos: ToolbarPosition, hostOverride?: HTMLElement, fixedToViewport = false): void {
+    const anchorEl = this.getHostContentEl(hostOverride);
+    if (!anchorEl) return;
+    // PDF 浮动工具栏挂载到 body 的 viewport-fixed 层，彻底脱离 PDF.js 阅读器
+    // 容器内的 CSS（transparent 文本、canvas 层叠等），避免工具栏被“吞掉”。
+    const mountEl = fixedToViewport ? (activeDocument.body ?? anchorEl) : anchorEl;
+    if (!mountEl) return;
+    this.mountedFixed = fixedToViewport;
 
-    // Remove any existing toolbars in this view to prevent duplicates
-    const existingToolbars = hostEl.querySelectorAll('.smartpick-toolbar-container');
-    existingToolbars.forEach((el: Element) => el.remove());
+    // Remove any existing toolbars to prevent duplicates
+    mountEl.querySelectorAll('.smartpick-toolbar-container').forEach((el: Element) => el.remove());
 
     // Create container
-    this.containerEl = hostEl.createDiv();
+    this.containerEl = mountEl.createDiv();
     this.containerEl.className = 'smartpick-toolbar-container';
+    if (fixedToViewport) this.containerEl.addClass('smartpick-toolbar-container-fixed');
     this.containerEl.toggleClass('smartpick-toolbar-container-mobile', Platform.isMobile);
     this.containerEl.setCssProps({
       top: '0px',
@@ -123,7 +139,7 @@ export class ToolbarUI {
       visibility: 'hidden',
     });
 
-    const contentBounds = this.getContentBoundsInOffsetParent(hostEl);
+    const contentBounds = this.getEffectiveBounds(anchorEl);
 
     // Horizontal positioning logic
     let left = 0;
@@ -143,7 +159,7 @@ export class ToolbarUI {
       && (isMultiLine || selectionWidth >= textWidth * DESKTOP_CENTER_ALIGNMENT_SELECTION_WIDTH_RATIO);
 
     if (Platform.isMobile) {
-        const hostRect = hostEl.getBoundingClientRect();
+        const hostRect = anchorEl.getBoundingClientRect();
         left = hostRect.left + hostRect.width / 2;
         transform = 'translateX(-50%)';
     } else if (shouldCenterDesktopToolbar) {
@@ -186,13 +202,16 @@ export class ToolbarUI {
       this.renderMoreButton(overflowItems);
     }
 
+    // Record how buttons actually rendered (used by on-device diagnostics).
+    this.lastAudit = formatToolbarAudit(this.toolbarEl);
+
     // Animate in
-    const viewWindow = hostEl.ownerDocument.defaultView ?? activeWindow;
+    const viewWindow = mountEl.ownerDocument.defaultView ?? activeWindow;
     viewWindow.requestAnimationFrame(() => {
       if (this.toolbarEl) {
         if (Platform.isMobile) {
-          this.positionMobileToolbar(hostEl);
-        } else if (!this.positionToolbar(hostEl, pos)) {
+          this.positionMobileToolbar(anchorEl);
+        } else if (!this.positionToolbar(anchorEl, pos)) {
             this.hide();
             return;
         }
@@ -210,7 +229,7 @@ export class ToolbarUI {
   ): boolean {
     if (!this.containerEl || !this.toolbarEl) return false;
 
-    const contentBounds = this.getContentBoundsInOffsetParent(viewContentEl);
+    const contentBounds = this.getEffectiveBounds(viewContentEl);
     const aboveTop = Math.max(
       contentBounds.top + 10,
       contentBounds.top + pos.top + this.plugin.settings.toolbarVerticalOffset
@@ -290,6 +309,26 @@ export class ToolbarUI {
       width: contentRect.width,
       height: contentRect.height,
     };
+  }
+
+  /**
+   * Bounds of the anchor element in the container's coordinate space:
+   * viewport coordinates when the container is viewport-fixed (PDF layer),
+   * otherwise offsetParent-relative (classic in-view mounting).
+   */
+  private getEffectiveBounds(anchorEl: HTMLElement): ContentBounds {
+    if (this.mountedFixed) {
+      const rect = anchorEl.getBoundingClientRect();
+      return {
+        left: rect.left,
+        top: rect.top,
+        right: rect.right,
+        bottom: rect.bottom,
+        width: rect.width,
+        height: rect.height,
+      };
+    }
+    return this.getContentBoundsInOffsetParent(anchorEl);
   }
 
   isMenuLocked(): boolean {
@@ -482,7 +521,7 @@ export class ToolbarUI {
     const hostEl = this.getHostContentEl();
     if (!hostEl) return;
 
-    const contentBounds = this.getContentBoundsInOffsetParent(hostEl);
+    const contentBounds = this.getEffectiveBounds(hostEl);
     const offsetParentRect = this.containerEl.offsetParent?.getBoundingClientRect();
     const originTop = offsetParentRect?.top ?? 0;
     const toolbarRect = this.toolbarEl.getBoundingClientRect();
@@ -681,7 +720,7 @@ export class ToolbarUI {
 
     await this.plugin.saveSettings();
     if (this.currentPosition) {
-      this.render(this.currentPosition);
+      this.render(this.currentPosition, this.lastHostEl, this.lastFixed);
     }
   }
 

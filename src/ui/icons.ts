@@ -67,3 +67,34 @@ export function setIconWithFallback(
     el.createSpan({ cls: 'smartpick-icon-fallback-text', text: label });
   }
 }
+
+export interface ToolbarIconAudit {
+  buttons: number;
+  svg: number;
+  prim: number;
+  txt: number;
+  empty: number;
+}
+
+/** Counts how toolbar buttons actually rendered (for on-device diagnostics). */
+export function auditIcons(root: Element | null): ToolbarIconAudit {
+  const audit: ToolbarIconAudit = { buttons: 0, svg: 0, prim: 0, txt: 0, empty: 0 };
+  if (!root) return audit;
+  const btns = root.querySelectorAll('button.smartpick-toolbar-button');
+  btns.forEach((b) => {
+    audit.buttons++;
+    const s = b.querySelector('svg');
+    if (s) audit.svg++;
+    if (s?.querySelector(DRAWING_PRIMITIVE_SELECTOR)) audit.prim++;
+    if (b.querySelector('.smartpick-icon-fallback-text')) audit.txt++;
+    if (!s && !b.querySelector('.smartpick-icon-fallback-text') && ((b.textContent ?? '').trim() === '')) {
+      audit.empty++;
+    }
+  });
+  return audit;
+}
+
+export function formatToolbarAudit(root: Element | null): string {
+  const a = auditIcons(root);
+  return `btns=${a.buttons} svg=${a.svg} prim=${a.prim} txt=${a.txt} empty=${a.empty}`;
+}
