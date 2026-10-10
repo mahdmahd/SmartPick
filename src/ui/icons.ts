@@ -10,13 +10,26 @@ import { setIcon } from 'obsidian';
 // making it a safe cross-version fallback.
 const FALLBACK_ICON_ID = 'circle';
 
+function hasIconContent(el: HTMLElement): boolean {
+  const svg = el.querySelector('svg');
+  if (!svg) return false;
+  // An icon must draw something: at least one element child (path/circle/…)
+  // or non-empty markup. Attribute-only placeholders draw nothing.
+  if (svg.firstElementChild) return true;
+  try {
+    return ((svg as unknown as Element).innerHTML ?? '').trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
 function trySetIcon(el: HTMLElement, id: string): boolean {
   try {
     setIcon(el, id);
   } catch {
     return false;
   }
-  return el.querySelector('svg') !== null;
+  return hasIconContent(el);
 }
 
 export function setIconWithFallback(
