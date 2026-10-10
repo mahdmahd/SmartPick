@@ -1,5 +1,6 @@
 import { App, Modal, Setting, Notice, setIcon, TextComponent } from 'obsidian';
 import { t } from '../i18n';
+import { setIconWithFallback } from './icons';
 import { CommandSuggester, IconSuggester } from './Suggesters';
 
 import { ConfirmModal } from './ConfirmModal';
@@ -148,7 +149,7 @@ export class CommandModal extends Modal {
     
     const updateIconPreview = (icon: string) => {
       iconPreview.empty();
-      setIcon(iconPreview, icon);
+      setIconWithFallback(iconPreview, icon, icon);
     };
     updateIconPreview(this.resultIcon);
 
@@ -308,7 +309,7 @@ export class AICommandModal extends Modal {
     
     const updateIconPreview = (icon: string) => {
       iconPreview.empty();
-      setIcon(iconPreview, icon);
+      setIconWithFallback(iconPreview, icon, icon);
     };
     updateIconPreview(this.resultIcon);
 
@@ -488,7 +489,7 @@ export class UrlCommandModal extends Modal {
     
     const updateIconPreview = (icon: string) => {
       iconPreview.empty();
-      setIcon(iconPreview, icon);
+      setIconWithFallback(iconPreview, icon, icon);
     };
     updateIconPreview(this.resultIcon);
 
@@ -647,7 +648,7 @@ export class ShortcutModal extends Modal {
     
     const updateIconPreview = (icon: string) => {
       iconPreview.empty();
-      setIcon(iconPreview, icon);
+      setIconWithFallback(iconPreview, icon, icon);
     };
     updateIconPreview(this.resultIcon);
 

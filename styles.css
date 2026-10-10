@@ -1218,7 +1218,8 @@ body .modal.mod-settings .smartpick-settings .smartpick-card > h3.smartpick-card
 }
 
 .smartpick-command-tile:hover .smartpick-command-tile-actions,
-.smartpick-command-tile:focus-within .smartpick-command-tile-actions {
+.smartpick-command-tile:focus-within .smartpick-command-tile-actions,
+.smartpick-command-tile.is-mobile .smartpick-command-tile-actions {
   opacity: 1;
   pointer-events: auto;
 }
@@ -1241,6 +1242,10 @@ body .modal.mod-settings .smartpick-settings .smartpick-card > h3.smartpick-card
 .smartpick-command-tile-action svg {
   width: 11px;
   height: 11px;
+  display: block;
+  visibility: visible;
+  opacity: 1;
+  flex: 0 0 auto;
 }
 
 .smartpick-command-tile-action:hover {

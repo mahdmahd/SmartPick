@@ -1,6 +1,6 @@
 // SmartPick Settings Tab - Plugin settings UI
 
-import { App, PluginSettingTab, Setting, setIcon, setTooltip, Notice, ButtonComponent, Platform, Modal } from 'obsidian';
+import { App, PluginSettingTab, Setting, setTooltip, Notice, ButtonComponent, Platform, Modal } from 'obsidian';
 import { setIconWithFallback } from './icons';
 import type SmartPickPlugin from '../main';
 import { 
@@ -399,7 +399,7 @@ export class SmartPickSettingTab extends PluginSettingTab {
           },
         });
         moveUpBtn.disabled = index === 0;
-        setIcon(moveUpBtn, 'chevron-up');
+        setIconWithFallback(moveUpBtn, 'chevron-up', localize('上移', 'Move up'));
         setTooltip(moveUpBtn, localize('上移', 'Move up'), { placement: 'top', delay: 80 });
         moveUpBtn.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -417,7 +417,7 @@ export class SmartPickSettingTab extends PluginSettingTab {
           },
         });
         moveDownBtn.disabled = index === items.length - 1;
-        setIcon(moveDownBtn, 'chevron-down');
+        setIconWithFallback(moveDownBtn, 'chevron-down', localize('下移', 'Move down'));
         setTooltip(moveDownBtn, localize('下移', 'Move down'), { placement: 'top', delay: 80 });
         moveDownBtn.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -434,7 +434,7 @@ export class SmartPickSettingTab extends PluginSettingTab {
           'aria-label': item.enabled !== false ? t('disableCommand') : t('enableCommand'),
         },
       });
-      setIcon(toggleBtn, item.enabled !== false ? 'eye' : 'eye-off');
+      setIconWithFallback(toggleBtn, item.enabled !== false ? 'eye' : 'eye-off', item.enabled !== false ? t('disableCommand') : t('enableCommand'));
       setTooltip(toggleBtn, item.enabled !== false ? t('disableCommand') : t('enableCommand'), { placement: 'top', delay: 80 });
       toggleBtn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -452,7 +452,7 @@ export class SmartPickSettingTab extends PluginSettingTab {
             'aria-label': t('editCommand'),
           },
         });
-        setIcon(editBtn, 'pencil');
+        setIconWithFallback(editBtn, 'pencil', t('editCommand'));
         setTooltip(editBtn, t('editCommand'), { placement: 'top', delay: 80 });
         editBtn.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -465,7 +465,7 @@ export class SmartPickSettingTab extends PluginSettingTab {
             'aria-label': t('delete'),
           },
         });
-        setIcon(deleteBtn, 'trash-2');
+        setIconWithFallback(deleteBtn, 'trash-2', t('delete'));
         setTooltip(deleteBtn, t('delete'), { placement: 'top', delay: 80 });
         deleteBtn.addEventListener('click', (e) => {
           e.stopPropagation();
