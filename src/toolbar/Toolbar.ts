@@ -5,6 +5,7 @@ import type { EditorPosition, WorkspaceLeaf } from 'obsidian';
 import type SmartPickPlugin from '../main';
 import { ToolbarUI } from './ToolbarUI';
 import { PdfToolbarIntegration } from './PdfToolbarIntegration';
+import { DRAWING_PRIMITIVE_SELECTOR } from '../ui/icons';
 import { t } from '../i18n';
 
 export type SmartPickSelectionSource = 'markdown' | 'pdf' | null;
@@ -792,6 +793,32 @@ export class Toolbar {
 
   isPdfContext(): boolean {
     return this.currentSource === 'pdf';
+  }
+
+  /** Runtime diagnostics for the on-device "Diagnose toolbar icons" command. */
+  getDebugLines(): string[] {
+    const lines = [
+      `sel=${this.currentSelection.length} src=${this.currentSource ?? 'none'} visible=${this.isVisible ? 1 : 0}`,
+    ];
+    const bars = activeDocument.querySelectorAll('.smartpick-toolbar');
+    lines.push(`bars=${bars.length}`);
+    bars.forEach((bar, i) => {
+      const btns = bar.querySelectorAll('button.smartpick-toolbar-button');
+      let svg = 0;
+      let prim = 0;
+      let txt = 0;
+      let empty = 0;
+      btns.forEach((b) => {
+        const s = b.querySelector('svg');
+        if (s) svg++;
+        if (s?.querySelector(DRAWING_PRIMITIVE_SELECTOR)) prim++;
+        if (b.querySelector('.smartpick-icon-fallback-text')) txt++;
+        if (!s && !b.querySelector('.smartpick-icon-fallback-text') && ((b.textContent ?? '').trim() === '')) empty++;
+      });
+      const shown = (bar as HTMLElement).offsetParent !== null ? 1 : 0;
+      lines.push(`bar${i}: btns=${btns.length} svg=${svg} prim=${prim} txt=${txt} empty=${empty} shown=${shown}`);
+    });
+    return lines;
   }
 
   getHasSelection(): boolean {

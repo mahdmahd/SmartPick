@@ -240,6 +240,14 @@ button.smartpick-toolbar-button {
   user-select: none;
 }
 
+/* Toolbar diagnostics report */
+.smartpick-diagnostic-pre {
+  white-space: pre-wrap;
+  font-size: 12px;
+  max-height: 320px;
+  overflow: auto;
+}
+
 /* Native PDF reader top-bar SmartPick button */
 .smartpick-pdf-bar-button {
   color: var(--text-muted);

@@ -1,7 +1,7 @@
 // SmartPick - Obsidian Plugin Main Entry
 // 智能划词工具栏 - 选中文本自动弹出工具栏，支持自定义命令和AI功能
 
-import { Plugin, Notice, Editor, FileSystemAdapter, Platform, TFile, normalizePath } from 'obsidian';
+import { App, Plugin, Notice, Editor, FileSystemAdapter, Modal, Platform, TFile, getIconIds, normalizePath, setIcon } from 'obsidian';
 import { SmartPickSettings, DEFAULT_SETTINGS, OutputAction } from './settings';
 import { localize } from './i18n';
 import { Toolbar } from './toolbar/Toolbar';
@@ -46,6 +46,9 @@ export default class SmartPickPlugin extends Plugin {
 
     // Register built-in commands
     this.registerBuiltInCommands();
+
+    // On-device diagnostics (command palette)
+    this.registerDiagnosticCommand();
   }
 
   onunload(): void {
@@ -574,5 +577,95 @@ export default class SmartPickPlugin extends Plugin {
         url = url.slice(1, -1);
     }
     return url;
+  }
+
+  /**
+   * On-device diagnostics for toolbar/PDF issues (phones have no devtools).
+   * Run "SmartPick: Diagnose toolbar icons" from the command palette while
+   * the floating bar is visible; a report modal opens and the report is also
+   * copied to the clipboard.
+   */
+  private registerDiagnosticCommand(): void {
+    this.addCommand({
+        id: 'diagnose-toolbar-icons',
+        name: 'Diagnose toolbar icons',
+        callback: async () => {
+            const lines: string[] = [];
+            lines.push(`smartpick=${this.manifest.version} mobile=${Platform.isMobileApp ? 1 : 0}`);
+            try {
+                lines.push(`knownIcons=${getIconIds().length}`);
+            } catch {
+                lines.push('knownIcons=n/a');
+            }
+            for (const id of DIAGNOSTIC_PROBE_ICON_IDS) {
+                lines.push(probeDiagnosticIcon(id));
+            }
+            if (this.toolbar) {
+                lines.push(...this.toolbar.getDebugLines());
+            } else {
+                lines.push('toolbar=none');
+            }
+            try {
+                const view = this.app.workspace.activeLeaf?.view as unknown as {
+                    getViewType?: () => string;
+                    file?: { extension?: string };
+                } | null;
+                lines.push(`view=${view?.getViewType?.() ?? 'none'} ext=${view?.file?.extension ?? '-'}`);
+            } catch {
+                lines.push('view=err');
+            }
+            const report = lines.join('\n');
+            try {
+                await navigator.clipboard.writeText(report);
+            } catch {
+                // clipboard may be unavailable; the modal still shows the report
+            }
+            new ToolbarDiagnosticModal(this.app, report).open();
+        }
+    });
+  }
+}
+
+const DIAGNOSTIC_PROBE_ICON_IDS = [
+  'sparkles',
+  'superscript',
+  'link-2',
+  'languages',
+  'circle',
+  'settings',
+  'x',
+];
+
+const DIAGNOSTIC_DRAWING_SELECTOR =
+  'path,circle,rect,line,polyline,polygon,ellipse,use,text,tspan,image';
+
+function probeDiagnosticIcon(id: string): string {
+  const div = activeDocument.createElement('div');
+  let threw = false;
+  try {
+    setIcon(div, id);
+  } catch {
+    threw = true;
+  }
+  const svg = div.querySelector('svg');
+  const prim = svg?.querySelector(DIAGNOSTIC_DRAWING_SELECTOR);
+  return `${id}: threw=${threw ? 1 : 0} svg=${svg ? 1 : 0} prim=${prim ? 1 : 0} len=${div.innerHTML.length}`;
+}
+
+class ToolbarDiagnosticModal extends Modal {
+  constructor(app: App, private readonly report: string) {
+    super(app);
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.createEl('h2', { text: 'SmartPick diagnostics' });
+    contentEl.createEl('p', { text: 'Report copied to clipboard — paste it back for support.' });
+    contentEl.createEl('pre', { text: this.report, cls: 'smartpick-diagnostic-pre' });
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
   }
 }
