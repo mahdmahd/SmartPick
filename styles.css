@@ -90,6 +90,11 @@ button.smartpick-toolbar-button {
 .smartpick-toolbar-button svg {
   width: 14px;
   height: 14px;
+  /* Never let foreign viewer/theme CSS blank out button icons */
+  display: block;
+  visibility: visible;
+  opacity: 1;
+  flex: 0 0 auto;
 }
 
 .smartpick-toolbar-mobile .smartpick-toolbar-button svg {
@@ -245,6 +250,8 @@ button.smartpick-toolbar-button {
   color: var(--text-normal);
   text-transform: uppercase;
   user-select: none;
+  visibility: visible;
+  opacity: 1;
 }
 
 /* Toolbar diagnostics report */
@@ -253,6 +260,61 @@ button.smartpick-toolbar-button {
   font-size: 12px;
   max-height: 320px;
   overflow: auto;
+}
+
+/* Visibility test bar (diagnostic eye chart) */
+.smartpick-testbar {
+  position: fixed;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  display: flex;
+  gap: 8px;
+  padding: 10px;
+  background: #000000;
+  border: 2px solid #ffff00;
+  border-radius: 8px;
+  max-width: 96vw;
+  overflow-x: auto;
+  color: #ffffff;
+}
+
+.smartpick-testcell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  flex: 0 0 auto;
+}
+
+.smartpick-testbox {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #ff0000;
+  font-size: 16px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.smartpick-testbox svg {
+  width: 24px;
+  height: 24px;
+  display: block;
+}
+
+.smartpick-test-white {
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.smartpick-test-whitebox {
+  color: #ffffff;
 }
 
 /* Native PDF reader top-bar SmartPick button */

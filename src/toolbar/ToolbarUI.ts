@@ -128,8 +128,10 @@ export class ToolbarUI {
     // Remove any existing toolbars to prevent duplicates
     mountEl.querySelectorAll('.smartpick-toolbar-container').forEach((el: Element) => el.remove());
 
-    // Create container
-    this.containerEl = mountEl.createDiv();
+    // Build the whole toolbar DETACHED first, then attach once complete.
+    // Probes prove setIcon() works on detached nodes on every device, while
+    // building inside hidden/foreign containers has produced blank buttons.
+    this.containerEl = activeDocument.createElement('div');
     this.containerEl.className = 'smartpick-toolbar-container';
     if (fixedToViewport) this.containerEl.addClass('smartpick-toolbar-container-fixed');
     this.containerEl.toggleClass('smartpick-toolbar-container-mobile', Platform.isMobile);
@@ -138,6 +140,34 @@ export class ToolbarUI {
       left: '0px',
       visibility: 'hidden',
     });
+
+    // Create toolbar
+    this.toolbarEl = this.containerEl.createDiv();
+    this.toolbarEl.className = 'smartpick-toolbar';
+    this.toolbarEl.toggleClass('smartpick-toolbar-mobile', Platform.isMobile);
+
+    const enabledItems = this.getSortedToolbarItems().filter(
+      (item) => item.type !== 'separator' && item.enabled !== false
+    );
+    const maxVisibleItems = Platform.isMobile
+      ? MOBILE_VISIBLE_TOOLBAR_BUTTONS
+      : DESKTOP_VISIBLE_TOOLBAR_BUTTONS;
+    const visibleItems = enabledItems.slice(0, maxVisibleItems);
+    const overflowItems = enabledItems.slice(maxVisibleItems);
+
+    for (const item of visibleItems) {
+      this.renderButton(item, this.hasSelection);
+    }
+
+    if (overflowItems.length > 0 || enabledItems.length > 0) {
+      this.renderMoreButton(overflowItems);
+    }
+
+    // Record how buttons actually rendered (used by on-device diagnostics).
+    this.lastAudit = formatToolbarAudit(this.toolbarEl);
+
+    // Attach only when fully built.
+    mountEl.appendChild(this.containerEl);
 
     const contentBounds = this.getEffectiveBounds(anchorEl);
 
@@ -179,31 +209,6 @@ export class ToolbarUI {
       left: `${left}px`,
       transform,
     });
-    
-    // Create toolbar
-    this.toolbarEl = this.containerEl.createDiv();
-    this.toolbarEl.className = 'smartpick-toolbar';
-    this.toolbarEl.toggleClass('smartpick-toolbar-mobile', Platform.isMobile);
-
-    const enabledItems = this.getSortedToolbarItems().filter(
-      (item) => item.type !== 'separator' && item.enabled !== false
-    );
-    const maxVisibleItems = Platform.isMobile
-      ? MOBILE_VISIBLE_TOOLBAR_BUTTONS
-      : DESKTOP_VISIBLE_TOOLBAR_BUTTONS;
-    const visibleItems = enabledItems.slice(0, maxVisibleItems);
-    const overflowItems = enabledItems.slice(maxVisibleItems);
-
-    for (const item of visibleItems) {
-      this.renderButton(item, this.hasSelection);
-    }
-
-    if (overflowItems.length > 0 || enabledItems.length > 0) {
-      this.renderMoreButton(overflowItems);
-    }
-
-    // Record how buttons actually rendered (used by on-device diagnostics).
-    this.lastAudit = formatToolbarAudit(this.toolbarEl);
 
     // Animate in
     const viewWindow = mountEl.ownerDocument.defaultView ?? activeWindow;

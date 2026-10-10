@@ -8,6 +8,7 @@ import { Toolbar } from './toolbar/Toolbar';
 import { SmartPickSettingTab } from './ui/SettingsTab';
 import { CommandManager } from './commands/CommandManager';
 import { getLastIconDecision } from './ui/icons';
+import { setIconWithFallback } from './ui/icons';
 
 const CURRENT_MIGRATION_VERSION = 3;
 const REMOVED_BUILTIN_TOOLBAR_ITEM_IDS = new Set([
@@ -50,6 +51,7 @@ export default class SmartPickPlugin extends Plugin {
 
     // On-device diagnostics (command palette)
     this.registerDiagnosticCommand();
+    this.registerVisibilityTestCommand();
   }
 
   onunload(): void {
@@ -628,6 +630,23 @@ export default class SmartPickPlugin extends Plugin {
         }
     });
   }
+
+  /**
+   * Visual eye chart for phones: shows numbered boxes exercising text, svg
+   * icons, native buttons and a real toolbar button on the same fixed layer
+   * the PDF toolbar uses. Screenshot which boxes are visible; run again to
+   * hide. Isolates element/CSS factors when floating buttons look blank.
+   */
+  private registerVisibilityTestCommand(): void {
+    this.addCommand({
+        id: 'show-visibility-test-bar',
+        name: 'Show visibility test bar',
+        callback: () => {
+            toggleVisibilityTestBar();
+            new Notice('Test bar toggled — screenshot visible boxes, run again to hide');
+        }
+    });
+  }
 }
 
 const DIAGNOSTIC_PROBE_ICON_IDS = [
@@ -656,7 +675,56 @@ function probeDiagnosticIcon(id: string): string {
   return `${id}: threw=${threw ? 1 : 0} svg=${svg ? 1 : 0} prim=${prim ? 1 : 0} len=${div.innerHTML.length}`;
 }
 
+let visibilityTestBarEl: HTMLElement | null = null;
+
+function toggleVisibilityTestBar(): void {
+  if (visibilityTestBarEl) {
+    visibilityTestBarEl.remove();
+    visibilityTestBarEl = null;
+    return;
+  }
+
+  const bar = activeDocument.createElement('div');
+  bar.className = 'smartpick-testbar';
+
+  const cells: Array<{ label: string; build: (box: HTMLElement) => void }> = [
+    { label: '1 text', build: (box) => { box.setText('AB'); } },
+    {
+      label: '2 text-white',
+      build: (box) => { box.createSpan({ text: 'AB', cls: 'smartpick-test-white' }); },
+    },
+    { label: '3 svg', build: (box) => { setIcon(box, 'sparkles'); } },
+    {
+      label: '4 svg-white',
+      build: (box) => { setIcon(box, 'superscript'); box.addClass('smartpick-test-whitebox'); },
+    },
+    { label: '5 button', build: (box) => { box.createEl('button', { text: 'OK' }); } },
+    {
+      label: '6 real-btn',
+      build: (box) => {
+        const btn = box.createEl('button', { cls: 'smartpick-toolbar-button' });
+        setIconWithFallback(btn, 'languages', 'Languages');
+      },
+    },
+  ];
+
+  for (const cell of cells) {
+    const wrap = bar.createDiv({ cls: 'smartpick-testcell' });
+    wrap.createDiv({ cls: 'smartpick-testlabel', text: cell.label });
+    const box = wrap.createDiv({ cls: 'smartpick-testbox' });
+    try {
+      cell.build(box);
+    } catch {
+      box.setText('ERR');
+    }
+  }
+
+  (activeDocument.body ?? activeDocument.documentElement).appendChild(bar);
+  visibilityTestBarEl = bar;
+}
+
 class ToolbarDiagnosticModal extends Modal {
+
   constructor(app: App, private readonly report: string) {
     super(app);
   }
