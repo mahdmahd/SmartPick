@@ -75,16 +75,26 @@ export class PreviewModal extends Modal {
     // Buttons container
     const buttonsEl = contentEl.createDiv('smartpick-preview-buttons');
 
-    // Replace button
+    // Replace button (PDF 阅读器下无可写编辑器，仅支持复制/查看)
     const replaceBtn = buttonsEl.createEl('button');
     setIcon(replaceBtn, 'replace');
     setTooltip(replaceBtn, t('replace'));
+    if (!this.editor) {
+      replaceBtn.setAttribute('disabled', 'true');
+      replaceBtn.addClass('smartpick-preview-button-disabled');
+      setTooltip(replaceBtn, `${t('replace')} (PDF)`);
+    }
     replaceBtn.addEventListener('click', () => this.handleReplace());
 
-    // Insert button
+    // Insert button (PDF 阅读器下无可写编辑器，仅支持复制/查看)
     const insertBtn = buttonsEl.createEl('button');
     setIcon(insertBtn, 'arrow-down-to-line');
     setTooltip(insertBtn, t('insert'));
+    if (!this.editor) {
+      insertBtn.setAttribute('disabled', 'true');
+      insertBtn.addClass('smartpick-preview-button-disabled');
+      setTooltip(insertBtn, `${t('insert')} (PDF)`);
+    }
     insertBtn.addEventListener('click', () => this.handleInsert());
 
     // Copy button

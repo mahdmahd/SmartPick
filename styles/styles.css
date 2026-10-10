@@ -129,6 +129,18 @@ button.smartpick-toolbar-button {
   border-radius: 6px;
 }
 
+.smartpick-preview-buttons button:disabled,
+.smartpick-preview-buttons button.smartpick-preview-button-disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* PDF reader: keep the floating toolbar above PDF.js canvas layers */
+.pdf-viewer-container .smartpick-toolbar-container,
+.pdfViewer .smartpick-toolbar-container {
+  z-index: 1000;
+}
+
 /* Settings Styles */
 .smartpick-settings {
   padding-bottom: 32px;

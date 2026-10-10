@@ -1,9 +1,11 @@
 // SmartPick Toolbar - Main toolbar controller
 
-import { Editor, MarkdownView, Platform } from 'obsidian';
+import { Editor, FileView, MarkdownView, Platform, View } from 'obsidian';
 import type { EditorPosition } from 'obsidian';
 import type SmartPickPlugin from '../main';
 import { ToolbarUI } from './ToolbarUI';
+
+export type SmartPickSelectionSource = 'markdown' | 'pdf' | null;
 
 const TOOLBAR_DELAY_MS = 200;
 const OUTSIDE_DISMISS_GUARD_MS = TOOLBAR_DELAY_MS + 50;
@@ -21,6 +23,9 @@ export class Toolbar {
   private currentEditor: Editor | null = null;
   private currentSelection: string = '';
   private currentSelectionRange: SavedSelectionRange | null = null;
+  private currentSource: SmartPickSelectionSource = null;
+  private savedPdfRange: Range | null = null;
+  private currentPdfView: View | null = null;
   private watchedEditorEl: HTMLElement | null = null;
   private outsidePointerDocument: Document | null = null;
   private hasSelection: boolean = false;
@@ -45,12 +50,15 @@ export class Toolbar {
 
     // Initial attach
     this.attachEditorListeners();
+    this.attachPdfListeners();
 
     // Global ESC listener
     activeDocument.addEventListener('keydown', this.handleKeyDown);
 
     // 在捕获阶段处理编辑器外点击，避免 CodeMirror 停止冒泡后无法关闭工具栏。
     activeDocument.addEventListener('mousedown', this.handleClickOutside, true);
+    // PDF 阅读器内滚动时关闭工具栏，避免悬浮位置过期。
+    activeDocument.addEventListener('scroll', this.handlePdfScrollHide, true);
 
     if (Platform.isMobile) {
       activeDocument.addEventListener('selectionchange', this.handleDocumentSelectionChange);
@@ -92,6 +100,209 @@ export class Toolbar {
     }
   }
 
+  private attachPdfListeners(): void {
+    // PDF 使用原生 DOM 选区，全局监听一次即可（Markdown 走编辑器局部监听）。
+    activeDocument.addEventListener('mouseup', this.handlePdfMouseUp);
+    activeDocument.addEventListener('keyup', this.handlePdfKeyUp);
+    activeDocument.addEventListener('touchend', this.handlePdfTouchEnd);
+    if (!Platform.isMobile) {
+      this.bindDesktopOutsidePointerListener(activeDocument);
+    }
+  }
+
+  private detachPdfListeners(): void {
+    activeDocument.removeEventListener('mouseup', this.handlePdfMouseUp);
+    activeDocument.removeEventListener('keyup', this.handlePdfKeyUp);
+    activeDocument.removeEventListener('touchend', this.handlePdfTouchEnd);
+  }
+
+  private getActivePdfView(): FileView | null {
+    const view = this.plugin.app.workspace.getActiveViewOfType(FileView);
+    if (!view) return null;
+    // MarkdownView 同样继承自 FileView，必须排除。
+    if (view instanceof MarkdownView) return null;
+    const file = view.file;
+    if (file?.extension?.toLowerCase() === 'pdf') return view;
+    try {
+      const viewType = view.getViewType?.();
+      if (viewType === 'pdf') return view;
+    } catch {
+      // ignore
+    }
+    return null;
+  }
+
+  private getPdfHostEl(view: View): HTMLElement | null {
+    const withContent = view as View & { contentEl?: HTMLElement; containerEl?: HTMLElement };
+    return withContent.contentEl ?? withContent.containerEl ?? null;
+  }
+
+  private getPdfSelection(): { text: string; range: Range; rect: DOMRect; view: FileView } | null {
+    const pdfView = this.getActivePdfView();
+    if (!pdfView) return null;
+    const hostEl = this.getPdfHostEl(pdfView);
+    if (!hostEl) return null;
+
+    const selection = activeWindow.getSelection();
+    if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return null;
+    const text = selection.toString();
+    if (!text || text.trim().length === 0) return null;
+
+    const anchorNode = selection.anchorNode;
+    const focusNode = selection.focusNode;
+    if (!anchorNode || !focusNode) return null;
+    if (!hostEl.contains(anchorNode) || !hostEl.contains(focusNode)) return null;
+
+    // 忽略工具栏自身内部的选区。
+    const range = selection.getRangeAt(0);
+    const common = range.commonAncestorContainer;
+    const commonEl = common instanceof HTMLElement ? common : common.parentElement;
+    if (commonEl?.closest?.('.smartpick-toolbar')) return null;
+
+    let rect: DOMRect | null = null;
+    try {
+      rect = range.getBoundingClientRect();
+    } catch {
+      return null;
+    }
+    if (!rect || (rect.width === 0 && rect.height === 0)) return null;
+
+    return { text, range, rect, view: pdfView };
+  }
+
+  private getPdfSelectionCoords(
+    view: View,
+    rect: DOMRect
+  ): {
+    left: number;
+    top: number;
+    right: number;
+    bottom: number;
+    width: number;
+    isMultiLine: boolean;
+    textLeft: number;
+    textWidth: number;
+  } | null {
+    try {
+      const hostEl = this.getPdfHostEl(view);
+      if (!hostEl) return null;
+      const containerRect = hostEl.getBoundingClientRect();
+      // 选区完全滚出可视区域时不显示。
+      if (rect.bottom <= containerRect.top || rect.top >= containerRect.bottom) return null;
+      if (rect.right <= containerRect.left || rect.left >= containerRect.right) return null;
+
+      return {
+        left: rect.left - containerRect.left,
+        top: rect.top - containerRect.top,
+        right: rect.right - containerRect.left,
+        bottom: rect.bottom - containerRect.top,
+        width: containerRect.width,
+        isMultiLine: rect.height > 20 * 1.5,
+        textLeft: 0,
+        textWidth: containerRect.width,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private handlePdfMouseUp = (e: MouseEvent): void => {
+    if (this.shouldIgnoreSelectionChange()) return;
+    const target = e.target as HTMLElement | null;
+    if (target?.closest?.('.smartpick-toolbar')) return;
+    if (!this.getActivePdfView()) return;
+    // Markdown 视图激活时交给编辑器监听处理，避免重复。
+    if (this.plugin.app.workspace.getActiveViewOfType(MarkdownView)) return;
+
+    let modifierActive = false;
+    if (this.plugin.settings.enableModifierKeyTrigger) {
+      modifierActive = this.checkEventModifier(e);
+    }
+    this.schedulePdfSelectionCheck(modifierActive);
+  };
+
+  private handlePdfKeyUp = (e: KeyboardEvent): void => {
+    if (this.shouldIgnoreSelectionChange()) return;
+    const target = e.target as HTMLElement | null;
+    if (target?.closest?.('.smartpick-toolbar')) return;
+    if (!this.getActivePdfView()) return;
+    if (this.plugin.app.workspace.getActiveViewOfType(MarkdownView)) return;
+    this.schedulePdfSelectionCheck(false);
+  };
+
+  private handlePdfTouchEnd = (): void => {
+    if (this.ui.isMenuLocked()) return;
+    if (this.shouldIgnoreSelectionChange()) return;
+    if (!this.getActivePdfView()) return;
+    if (this.plugin.app.workspace.getActiveViewOfType(MarkdownView)) return;
+    this.schedulePdfSelectionCheck(false);
+  };
+
+  private handlePdfScrollHide = (e: Event): void => {
+    if (!this.isVisible || this.currentSource !== 'pdf') return;
+    const target = e.target as HTMLElement | null;
+    const pdfView = this.currentPdfView;
+    if (!pdfView) return;
+    const hostEl = this.getPdfHostEl(pdfView);
+    if (hostEl && target instanceof Node && hostEl.contains(target)) {
+      this.hide();
+    }
+  };
+
+  private schedulePdfSelectionCheck(modifierActive: boolean = false): void {
+    if (this.debounceTimer) {
+      window.clearTimeout(this.debounceTimer);
+    }
+
+    this.debounceTimer = window.setTimeout(() => {
+      this.checkPdfSelection(modifierActive);
+    }, TOOLBAR_DELAY_MS);
+  }
+
+  private checkPdfSelection(modifierActive?: boolean): void {
+    if (this.ui.isMenuLocked()) return;
+
+    const info = this.getPdfSelection();
+    if (!info) {
+      if (this.currentSource === 'pdf') this.hide();
+      return;
+    }
+
+    if (this.plugin.settings.enableModifierKeyTrigger && !Platform.isMobile) {
+      if (!modifierActive) {
+        if (this.currentSource === 'pdf') this.hide();
+        return;
+      }
+    }
+
+    this.bindDesktopOutsidePointerListener(info.view.contentEl.ownerDocument);
+    this.showForPdf(info.view, info.text, info.range, info.rect);
+  }
+
+  private showForPdf(view: FileView, text: string, range: Range, rect: DOMRect): void {
+    if (this.ui.isMenuLocked()) return;
+
+    this.currentEditor = null;
+    this.currentSelection = text;
+    this.currentSelectionRange = null;
+    this.currentSource = 'pdf';
+    this.currentPdfView = view;
+    try {
+      this.savedPdfRange = range.cloneRange();
+    } catch {
+      this.savedPdfRange = null;
+    }
+    this.hasSelection = true;
+
+    const pos = this.getPdfSelectionCoords(view, rect);
+    const hostEl = this.getPdfHostEl(view);
+    if (pos && hostEl) {
+      this.ui.show(pos, true, hostEl);
+      this.isVisible = true;
+    } else {
+      this.hide();
+    }
+  }
   private bindDesktopOutsidePointerListener(ownerDocument: Document): void {
     if (Platform.isMobile || this.outsidePointerDocument === ownerDocument) return;
 
@@ -159,7 +370,14 @@ export class Toolbar {
 
     const selection = activeWindow.getSelection();
     if (!selection || selection.toString().trim().length === 0) return;
-    this.scheduleSelectionCheck(false);
+    // Markdown 与 PDF 共用移动端 selectionchange：按当前激活视图分发。
+    if (this.plugin.app.workspace.getActiveViewOfType(MarkdownView)) {
+      this.scheduleSelectionCheck(false);
+    } else if (this.getActivePdfView()) {
+      this.schedulePdfSelectionCheck(false);
+    } else {
+      this.scheduleSelectionCheck(false);
+    }
   };
 
   private handleDoubleClick = (e: MouseEvent): void => {
@@ -185,10 +403,17 @@ export class Toolbar {
 
   private showAtCurrentPosition(): void {
     const view = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
-    if (!view) return;
+    if (!view) {
+      // PDF 双击由 mouseup 兜底，这里无需处理。
+      this.checkPdfSelection(false);
+      return;
+    }
 
     const editor = view.editor;
     this.currentEditor = editor;
+    this.currentSource = 'markdown';
+    this.savedPdfRange = null;
+    this.currentPdfView = null;
 
     const selection = editor.getSelection();
     if (selection && selection.trim().length > 0) {
@@ -213,7 +438,8 @@ export class Toolbar {
 
     const view = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
     if (!view) {
-      this.hide();
+      // 当前可能是原生 PDF 阅读器，交给 PDF 流程处理。
+      this.checkPdfSelection(modifierActive);
       return;
     }
 
@@ -223,6 +449,9 @@ export class Toolbar {
     if (selection && selection.toString().trim().length > 0) {
       this.currentEditor = editor;
       this.currentSelection = selection.toString();
+      this.currentSource = 'markdown';
+      this.savedPdfRange = null;
+      this.currentPdfView = null;
       this.hasSelection = true;
       
       if (this.plugin.settings.enableModifierKeyTrigger && !Platform.isMobile) {
@@ -243,6 +472,9 @@ export class Toolbar {
     if (this.ui.isMenuLocked()) return;
 
     this.saveCurrentSelectionRange(editor);
+    this.currentSource = 'markdown';
+    this.savedPdfRange = null;
+    this.currentPdfView = null;
 
     const pos = this.getSelectionCoords(editor, view);
     if (pos) {
@@ -442,9 +674,24 @@ export class Toolbar {
   }
 
   restoreCurrentSelection(): void {
-    if (!this.currentEditor || !this.currentSelectionRange || !this.currentSelection) return;
+    if (!this.currentSelection) return;
 
     this.ignoreSelectionChangeUntil = activeWindow.performance.now() + 500;
+
+    // PDF：恢复原生 DOM 选区（点击工具栏按钮会使选区丢失时使用）。
+    if (this.currentSource === 'pdf' && this.savedPdfRange) {
+      try {
+        const selection = activeWindow.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(this.savedPdfRange.cloneRange());
+      } catch {
+        // ignore restore failures
+      }
+      return;
+    }
+
+    if (!this.currentEditor || !this.currentSelectionRange) return;
+
     this.currentEditor.focus();
     this.currentEditor.setSelection(
       this.currentSelectionRange.anchor,
@@ -458,6 +705,14 @@ export class Toolbar {
 
   getCurrentEditor(): Editor | null {
     return this.currentEditor;
+  }
+
+  getCurrentSource(): SmartPickSelectionSource {
+    return this.currentSource;
+  }
+
+  isPdfContext(): boolean {
+    return this.currentSource === 'pdf';
   }
 
   getHasSelection(): boolean {
@@ -474,8 +729,10 @@ export class Toolbar {
       this.watchedEditorEl.removeEventListener('touchend', this.handleTouchEnd);
       this.watchedEditorEl = null;
     }
+    this.detachPdfListeners();
     activeDocument.removeEventListener('keydown', this.handleKeyDown);
     activeDocument.removeEventListener('mousedown', this.handleClickOutside, true);
+    activeDocument.removeEventListener('scroll', this.handlePdfScrollHide, true);
     activeDocument.removeEventListener('selectionchange', this.handleDocumentSelectionChange);
     activeDocument.removeEventListener('touchstart', this.handleTouchOutside);
     this.outsidePointerDocument?.removeEventListener('pointerdown', this.handlePointerDownOutside, true);

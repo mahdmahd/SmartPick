@@ -1,6 +1,6 @@
 // SmartPick Toolbar UI - DOM rendering and button handling
 
-import { setIcon, setTooltip, MarkdownView, Platform } from 'obsidian';
+import { setIcon, setTooltip, FileView, MarkdownView, Platform } from 'obsidian';
 import type SmartPickPlugin from '../main';
 import type { Toolbar } from './Toolbar';
 import type { ToolbarItem } from '../settings';
@@ -62,11 +62,11 @@ export class ToolbarUI {
     this.toolbar = toolbar;
   }
 
-  show(pos: ToolbarPosition, hasSelection: boolean = true): void {
+  show(pos: ToolbarPosition, hasSelection: boolean = true, hostEl?: HTMLElement): void {
     this.hide();
     this.hasSelection = hasSelection;
     this.currentPosition = pos;
-    this.render(pos);
+    this.render(pos, hostEl);
   }
 
   hide(): void {
@@ -79,16 +79,41 @@ export class ToolbarUI {
     }
   }
 
-  private render(pos: ToolbarPosition): void {
-    const view = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
-    if (!view) return;
+  private getHostContentEl(hostOverride?: HTMLElement): HTMLElement | null {
+    if (hostOverride?.isConnected !== false && hostOverride) return hostOverride;
+
+    const markdownView = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
+    if (markdownView) return markdownView.contentEl;
+
+    // 原生 PDF 阅读器：FileView + pdf 扩展名（MarkdownView 已在上面排除）。
+    const fileView = this.plugin.app.workspace.getActiveViewOfType(FileView);
+    if (fileView && !(fileView instanceof MarkdownView)) {
+      const file = fileView.file;
+      let viewType: string | undefined;
+      try {
+        viewType = (fileView as unknown as { getViewType?: () => string }).getViewType?.();
+      } catch {
+        viewType = undefined;
+      }
+      if (file?.extension?.toLowerCase() === 'pdf' || viewType === 'pdf') {
+        const withContent = fileView as unknown as { contentEl?: HTMLElement; containerEl?: HTMLElement };
+        return withContent.contentEl ?? withContent.containerEl ?? null;
+      }
+    }
+
+    return null;
+  }
+
+  private render(pos: ToolbarPosition, hostOverride?: HTMLElement): void {
+    const hostEl = this.getHostContentEl(hostOverride);
+    if (!hostEl) return;
 
     // Remove any existing toolbars in this view to prevent duplicates
-    const existingToolbars = view.contentEl.querySelectorAll('.smartpick-toolbar-container');
+    const existingToolbars = hostEl.querySelectorAll('.smartpick-toolbar-container');
     existingToolbars.forEach((el: Element) => el.remove());
 
     // Create container
-    this.containerEl = view.contentEl.createDiv();
+    this.containerEl = hostEl.createDiv();
     this.containerEl.className = 'smartpick-toolbar-container';
     this.containerEl.toggleClass('smartpick-toolbar-container-mobile', Platform.isMobile);
     this.containerEl.setCssProps({
@@ -97,7 +122,7 @@ export class ToolbarUI {
       visibility: 'hidden',
     });
 
-    const contentBounds = this.getContentBoundsInOffsetParent(view.contentEl);
+    const contentBounds = this.getContentBoundsInOffsetParent(hostEl);
 
     // Horizontal positioning logic
     let left = 0;
@@ -117,7 +142,8 @@ export class ToolbarUI {
       && (isMultiLine || selectionWidth >= textWidth * DESKTOP_CENTER_ALIGNMENT_SELECTION_WIDTH_RATIO);
 
     if (Platform.isMobile) {
-        left = view.contentEl.getBoundingClientRect().left + view.contentEl.getBoundingClientRect().width / 2;
+        const hostRect = hostEl.getBoundingClientRect();
+        left = hostRect.left + hostRect.width / 2;
         transform = 'translateX(-50%)';
     } else if (shouldCenterDesktopToolbar) {
         // 宽单行或多行选区以选区中心为锚点。
@@ -160,12 +186,12 @@ export class ToolbarUI {
     }
 
     // Animate in
-    const viewWindow = view.contentEl.ownerDocument.defaultView ?? activeWindow;
+    const viewWindow = hostEl.ownerDocument.defaultView ?? activeWindow;
     viewWindow.requestAnimationFrame(() => {
       if (this.toolbarEl) {
         if (Platform.isMobile) {
-          this.positionMobileToolbar(view.contentEl);
-        } else if (!this.positionToolbar(view.contentEl, pos)) {
+          this.positionMobileToolbar(hostEl);
+        } else if (!this.positionToolbar(hostEl, pos)) {
             this.hide();
             return;
         }
@@ -439,10 +465,10 @@ export class ToolbarUI {
   private positionMoreMenu(): void {
     if (!this.containerEl || !this.toolbarEl || !this.moreMenuEl) return;
 
-    const view = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
-    if (!view) return;
+    const hostEl = this.getHostContentEl();
+    if (!hostEl) return;
 
-    const contentBounds = this.getContentBoundsInOffsetParent(view.contentEl);
+    const contentBounds = this.getContentBoundsInOffsetParent(hostEl);
     const offsetParentRect = this.containerEl.offsetParent?.getBoundingClientRect();
     const originTop = offsetParentRect?.top ?? 0;
     const toolbarRect = this.toolbarEl.getBoundingClientRect();
@@ -471,7 +497,7 @@ export class ToolbarUI {
     this.moreMenuEl.toggleClass('smartpick-toolbar-more-menu-below', direction === 'below');
 
     if (availableSpace < menuHeight) {
-      const viewWindow = view.contentEl.ownerDocument.defaultView ?? activeWindow;
+      const viewWindow = hostEl.ownerDocument.defaultView ?? activeWindow;
       const computedStyle = viewWindow.getComputedStyle(this.moreMenuEl);
       const verticalChrome =
         Number.parseFloat(computedStyle.paddingTop) +
@@ -653,16 +679,19 @@ export class ToolbarUI {
     const selection = this.toolbar.getCurrentSelection();
     const editor = this.toolbar.getCurrentEditor();
 
-    if (!editor) {
-      return;
+    // Markdown 与 PDF 共用：PDF 下 editor 为 null，但 AI / URL / 快捷键仍可用选区工作。
+    // 只有两者都缺失时才直接返回。
+    if (!editor && !selection) {
+      // command / shortcut 即便没有选区也允许执行（Obsidian 会自行忽略不适用项）。
+      if (item.type !== 'command' && item.type !== 'shortcut') return;
     }
 
     if (item.type === 'command' && item.commandId) {
-      // Execute Obsidian command (works with or without selection)
+      // Execute Obsidian command (works with or without selection; PDF 下编辑器类命令会自行 no-op)
       (this.plugin.app as unknown as AppWithCommands).commands.executeCommandById(item.commandId);
       this.toolbar.hide();
     } else if (item.type === 'ai') {
-      // AI commands require selection
+      // AI commands require selection (editor 可为 null：PDF 下仅支持复制/查看，不支持替换/插入)
       if (!selection) return;
       await this.executeAICommand(item, selection);
     } else if (item.type === 'url' && item.url) {
