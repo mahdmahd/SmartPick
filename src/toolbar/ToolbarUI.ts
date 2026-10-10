@@ -4,6 +4,7 @@ import { setIcon, setTooltip, FileView, MarkdownView, Platform } from 'obsidian'
 import type SmartPickPlugin from '../main';
 import type { Toolbar } from './Toolbar';
 import type { ToolbarItem } from '../settings';
+import { setIconWithFallback } from '../ui/icons';
 import { getBuiltinToolbarItemLabel, localize, t } from '../i18n';
 
 const DESKTOP_VISIBLE_TOOLBAR_BUTTONS = 8;
@@ -321,10 +322,8 @@ export class ToolbarUI {
     button.title = tooltip;
     setTooltip(button, tooltip, { placement: 'bottom', delay: 40 });
 
-    // Set icon
-    if (item.icon) {
-      setIcon(button, item.icon);
-    }
+    // Set icon (with fallback: older apps, e.g. Android, may lack newer icon ids)
+    setIconWithFallback(button, item.icon, tooltip);
 
     // Add AI indicator
     if (item.type === 'ai') {
@@ -535,9 +534,7 @@ export class ToolbarUI {
     }
 
     const iconEl = button.createSpan({ cls: 'smartpick-toolbar-more-item-icon' });
-    if (item.icon) {
-      setIcon(iconEl, item.icon);
-    }
+    setIconWithFallback(iconEl, item.icon, item.tooltip);
 
     const label = item.isBuiltin
       ? getBuiltinToolbarItemLabel(item.id, item.tooltip)

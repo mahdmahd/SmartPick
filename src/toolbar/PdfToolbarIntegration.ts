@@ -11,7 +11,8 @@
 // viewer re-renders its DOM on zoom/scroll, so the button is re-injected
 // whenever the leaf DOM changes.
 
-import { setIcon, WorkspaceLeaf } from 'obsidian';
+import { WorkspaceLeaf } from 'obsidian';
+import { setIconWithFallback } from '../ui/icons';
 import type SmartPickPlugin from '../main';
 import type { Toolbar } from './Toolbar';
 
@@ -98,7 +99,7 @@ class PdfLeafController {
       cls: ['clickable-icon', PDF_BAR_BUTTON_CLS],
       attr: { 'aria-label': 'SmartPick' },
     });
-    setIcon(this.barButtonEl, 'sparkles');
+    setIconWithFallback(this.barButtonEl, 'sparkles', 'SmartPick');
 
     // mousedown/pointerdown 会默认清除 PDF 文选，先 preventDefault 保住选区。
     this.barButtonEl.addEventListener('pointerdown', (e) => {

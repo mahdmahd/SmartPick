@@ -1,6 +1,7 @@
 // SmartPick Settings Tab - Plugin settings UI
 
 import { App, PluginSettingTab, Setting, setIcon, setTooltip, Notice, ButtonComponent, Platform, Modal } from 'obsidian';
+import { setIconWithFallback } from './icons';
 import type SmartPickPlugin from '../main';
 import { 
   ToolbarItem, 
@@ -374,9 +375,7 @@ export class SmartPickSettingTab extends PluginSettingTab {
       }
 
       const iconEl = tile.createDiv('smartpick-command-tile-icon');
-      if (item.icon) {
-        setIcon(iconEl, item.icon);
-      }
+      setIconWithFallback(iconEl, item.icon, item.tooltip);
 
       if (item.type === 'ai') {
         tile.createSpan({ text: 'AI', cls: 'smartpick-command-tile-badge' });

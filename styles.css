@@ -230,6 +230,16 @@ button.smartpick-toolbar-button {
   z-index: 1000;
 }
 
+/* Icon fallback text (shown when the icon id is missing in older apps, e.g. Android) */
+.smartpick-icon-fallback-text {
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text-normal);
+  text-transform: uppercase;
+  user-select: none;
+}
+
 /* Native PDF reader top-bar SmartPick button */
 .smartpick-pdf-bar-button {
   color: var(--text-muted);

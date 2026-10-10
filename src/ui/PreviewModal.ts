@@ -1,6 +1,7 @@
 // SmartPick Preview Modal - AI response preview with streaming
 
-import { App, Editor, Modal, MarkdownRenderer, Component, setIcon, setTooltip } from 'obsidian';
+import { App, Editor, Modal, MarkdownRenderer, Component, setTooltip } from 'obsidian';
+import { setIconWithFallback } from './icons';
 import type SmartPickPlugin from '../main';
 import { OutputAction } from '../settings';
 import { 
@@ -77,7 +78,7 @@ export class PreviewModal extends Modal {
 
     // Replace button (PDF 阅读器下无可写编辑器，仅支持复制/查看)
     const replaceBtn = buttonsEl.createEl('button');
-    setIcon(replaceBtn, 'replace');
+    setIconWithFallback(replaceBtn, 'replace', t('replace'));
     setTooltip(replaceBtn, t('replace'));
     if (!this.editor) {
       replaceBtn.setAttribute('disabled', 'true');
@@ -88,7 +89,7 @@ export class PreviewModal extends Modal {
 
     // Insert button (PDF 阅读器下无可写编辑器，仅支持复制/查看)
     const insertBtn = buttonsEl.createEl('button');
-    setIcon(insertBtn, 'arrow-down-to-line');
+    setIconWithFallback(insertBtn, 'arrow-down-to-line', t('insert'));
     setTooltip(insertBtn, t('insert'));
     if (!this.editor) {
       insertBtn.setAttribute('disabled', 'true');
@@ -99,13 +100,13 @@ export class PreviewModal extends Modal {
 
     // Copy button
     const copyBtn = buttonsEl.createEl('button');
-    setIcon(copyBtn, 'copy');
+    setIconWithFallback(copyBtn, 'copy', t('copy'));
     setTooltip(copyBtn, t('copy'));
     copyBtn.addEventListener('click', () => { void this.handleCopy(); });
 
     // Cancel button
     const cancelBtn = buttonsEl.createEl('button');
-    setIcon(cancelBtn, 'x');
+    setIconWithFallback(cancelBtn, 'x', t('cancel'));
     setTooltip(cancelBtn, t('cancel'));
     cancelBtn.addEventListener('click', () => this.close());
 
