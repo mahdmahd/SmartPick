@@ -230,6 +230,20 @@ button.smartpick-toolbar-button {
   z-index: 1000;
 }
 
+/* Native PDF reader top-bar SmartPick button */
+.smartpick-pdf-bar-button {
+  color: var(--text-muted);
+}
+
+.smartpick-pdf-bar-button:hover {
+  color: var(--text-normal);
+}
+
+.smartpick-pdf-bar-button svg {
+  width: 16px;
+  height: 16px;
+}
+
 /* Settings Styles */
 .smartpick-hidden-file-input {
   display: none;

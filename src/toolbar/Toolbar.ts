@@ -1,9 +1,11 @@
 // SmartPick Toolbar - Main toolbar controller
 
-import { Editor, FileView, MarkdownView, Platform, View } from 'obsidian';
-import type { EditorPosition } from 'obsidian';
+import { Editor, FileView, MarkdownView, Notice, Platform, View } from 'obsidian';
+import type { EditorPosition, WorkspaceLeaf } from 'obsidian';
 import type SmartPickPlugin from '../main';
 import { ToolbarUI } from './ToolbarUI';
+import { PdfToolbarIntegration } from './PdfToolbarIntegration';
+import { t } from '../i18n';
 
 export type SmartPickSelectionSource = 'markdown' | 'pdf' | null;
 
@@ -26,6 +28,7 @@ export class Toolbar {
   private currentSource: SmartPickSelectionSource = null;
   private savedPdfRange: Range | null = null;
   private currentPdfView: View | null = null;
+  private pdfBar: PdfToolbarIntegration | null = null;
   private watchedEditorEl: HTMLElement | null = null;
   private outsidePointerDocument: Document | null = null;
   private hasSelection: boolean = false;
@@ -51,6 +54,10 @@ export class Toolbar {
     // Initial attach
     this.attachEditorListeners();
     this.attachPdfListeners();
+
+    // PDF 顶栏常驻按钮（原生 PDF 阅读器 `.pdf-toolbar-right`）。
+    this.pdfBar = new PdfToolbarIntegration(this.plugin, this);
+    this.pdfBar.init();
 
     // Global ESC listener
     activeDocument.addEventListener('keydown', this.handleKeyDown);
@@ -301,6 +308,78 @@ export class Toolbar {
       this.isVisible = true;
     } else {
       this.hide();
+    }
+  }
+
+  /**
+   * PDF 顶栏 SmartPick 按钮入口：在指定 leaf 内查找当前 PDF 文选并弹出浮动工具栏。
+   * 点顶栏按钮时浏览器可能已经清掉选区，因此先读实时选区，再兜底复用最近一次
+   * 保存的 PDF 选区；都没有则提示先选中文本。
+   */
+  showToolbarFromPdfBarClick(leaf?: WorkspaceLeaf | null): boolean {
+    if (this.ui.isMenuLocked()) return false;
+
+    const scoped = leaf ? this.getPdfSelectionInLeaf(leaf) : null;
+    const active = scoped ?? this.getPdfSelection();
+    if (active) {
+      this.bindDesktopOutsidePointerListener(active.view.contentEl.ownerDocument);
+      this.showForPdf(active.view, active.text, active.range, active.rect);
+      return true;
+    }
+
+    // 兜底：点击按钮导致选区刚丢失时，复用内存中的选区快照。
+    if (this.currentSource === 'pdf' && this.currentSelection && this.savedPdfRange && this.currentPdfView) {
+      try {
+        const rect = this.savedPdfRange.getBoundingClientRect();
+        if (rect && (rect.width !== 0 || rect.height !== 0)) {
+          const hostEl = this.getPdfHostEl(this.currentPdfView);
+          const pos = this.getPdfSelectionCoords(this.currentPdfView, rect);
+          if (pos && hostEl) {
+            this.ui.show(pos, true, hostEl);
+            this.isVisible = true;
+            return true;
+          }
+        }
+      } catch {
+        // fall through to notice
+      }
+    }
+
+    new Notice(t('noSelection'));
+    return false;
+  }
+
+  private getPdfSelectionInLeaf(
+    leaf: WorkspaceLeaf
+  ): { text: string; range: Range; rect: DOMRect; view: FileView } | null {
+    try {
+      const view = leaf.view as unknown as FileView | null;
+      if (!view) return null;
+      const withEl = view as unknown as { contentEl?: HTMLElement; containerEl?: HTMLElement };
+      const scopeEl = withEl.containerEl ?? withEl.contentEl;
+      if (!scopeEl) return null;
+
+      const selection = activeWindow.getSelection();
+      if (!selection || selection.rangeCount === 0 || selection.isCollapsed) return null;
+      const text = selection.toString();
+      if (!text || text.trim().length === 0) return null;
+
+      const anchorNode = selection.anchorNode;
+      const focusNode = selection.focusNode;
+      if (!anchorNode || !focusNode) return null;
+      if (!scopeEl.contains(anchorNode) || !scopeEl.contains(focusNode)) return null;
+
+      const range = selection.getRangeAt(0);
+      const common = range.commonAncestorContainer;
+      const commonEl = common instanceof HTMLElement ? common : common.parentElement;
+      if (commonEl?.closest?.('.smartpick-toolbar')) return null;
+
+      const rect = range.getBoundingClientRect();
+      if (!rect || (rect.width === 0 && rect.height === 0)) return null;
+
+      return { text, range, rect, view };
+    } catch {
+      return null;
     }
   }
   private bindDesktopOutsidePointerListener(ownerDocument: Document): void {
@@ -730,6 +809,8 @@ export class Toolbar {
       this.watchedEditorEl = null;
     }
     this.detachPdfListeners();
+    this.pdfBar?.destroy();
+    this.pdfBar = null;
     activeDocument.removeEventListener('keydown', this.handleKeyDown);
     activeDocument.removeEventListener('mousedown', this.handleClickOutside, true);
     activeDocument.removeEventListener('scroll', this.handlePdfScrollHide, true);

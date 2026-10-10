@@ -210,20 +210,35 @@ export class ToolbarUI {
     if (!this.containerEl || !this.toolbarEl) return false;
 
     const contentBounds = this.getContentBoundsInOffsetParent(viewContentEl);
-    const top = Math.max(
+    const aboveTop = Math.max(
       contentBounds.top + 10,
       contentBounds.top + pos.top + this.plugin.settings.toolbarVerticalOffset
     );
 
-    // 桌面端沿用 WK EditKit 的锚点：以选区顶部为基准向上展开。
-    // 移动端由独立的 positionMobileToolbar() 保持原有定位行为。
-    this.currentPlacement = 'above';
-    this.containerEl.toggleClass('smartpick-toolbar-placement-above', true);
-    this.containerEl.toggleClass('smartpick-toolbar-placement-below', false);
-    this.containerEl.setCssProps({
-      top: `${top}px`,
-      transform: `${this.containerEl.style.transform} translateY(-100%)`.trim(),
-    });
+    // 桌面端默认以选区顶部为基准向上展开；当上方空间不足（例如 PDF 页首选区，
+    // 向上会被 PDF 顶栏/容器裁剪导致“看不见”）时改为向下展开。
+    const toolbarHeight =
+      this.toolbarEl.getBoundingClientRect().height || this.toolbarEl.offsetHeight || 40;
+    const roomAbove = aboveTop - contentBounds.top;
+    const placeAbove = roomAbove >= toolbarHeight + 4;
+
+    if (placeAbove) {
+      this.currentPlacement = 'above';
+      this.containerEl.toggleClass('smartpick-toolbar-placement-above', true);
+      this.containerEl.toggleClass('smartpick-toolbar-placement-below', false);
+      this.containerEl.setCssProps({
+        top: `${aboveTop}px`,
+        transform: `${this.containerEl.style.transform} translateY(-100%)`.trim(),
+      });
+    } else {
+      this.currentPlacement = 'below';
+      this.containerEl.toggleClass('smartpick-toolbar-placement-above', false);
+      this.containerEl.toggleClass('smartpick-toolbar-placement-below', true);
+      this.containerEl.setCssProps({
+        top: `${contentBounds.top + pos.bottom + 8}px`,
+        transform: this.containerEl.style.transform,
+      });
+    }
     return true;
   }
 
