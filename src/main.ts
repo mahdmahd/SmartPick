@@ -593,8 +593,9 @@ export default class SmartPickPlugin extends Plugin {
             const lines: string[] = [];
             lines.push(`smartpick=${this.manifest.version} mobile=${Platform.isMobileApp ? 1 : 0}`);
             try {
-                const ids = getIconIds() as string[];
-                lines.push(`knownIcons=${ids.length} sample=${ids.slice(0, 3).join('|')} hasSup=${ids.includes('superscript') ? 1 : 0} hasCircle=${ids.includes('circle') ? 1 : 0}`);
+                const ids = getIconIds();
+                const hasId = (want: string): number => (ids.some((id) => id === want) ? 1 : 0);
+                lines.push(`knownIcons=${ids.length} sample=${ids.slice(0, 3).join('|')} hasSup=${hasId('superscript')} hasCircle=${hasId('circle')}`);
             } catch {
                 lines.push('knownIcons=n/a');
             }
