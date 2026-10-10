@@ -5,7 +5,7 @@
 // guarantees a visible button: requested icon -> long-standing core fallback
 // icon -> short text label.
 
-import { getIconIds, setIcon } from 'obsidian';
+import { setIcon } from 'obsidian';
 
 // 'circle' has existed in the lucide set (and Obsidian) for a very long time,
 // making it a safe cross-version fallback.
@@ -13,22 +13,6 @@ const FALLBACK_ICON_ID = 'circle';
 
 export const DRAWING_PRIMITIVE_SELECTOR =
   'path,circle,rect,line,polyline,polygon,ellipse,use,text,tspan,image';
-
-let cachedKnownIds: Set<string> | null | undefined;
-
-function knownIconExists(id: string): boolean | null {
-  // Returns null when the running app has no icon-listing API (unknown).
-  try {
-    if (cachedKnownIds === undefined) {
-      const ids = getIconIds();
-      cachedKnownIds = Array.isArray(ids) ? new Set(ids) : null;
-    }
-    if (cachedKnownIds === null) return null;
-    return cachedKnownIds.has(id);
-  } catch {
-    return null;
-  }
-}
 
 export function hasDrawableIconContent(el: HTMLElement): boolean {
   const svg = el.querySelector('svg');
@@ -52,9 +36,15 @@ export function setIconWithFallback(
   iconId: string | undefined,
   fallbackText?: string
 ): void {
+  // NOTE: deliberately no getIconIds() membership pre-check here. The id
+  // format returned by getIconIds() differs across app versions/platforms,
+  // which made valid icons get skipped on some Android builds while direct
+  // setIcon() calls work fine there. The behavioral check below observes
+  // what setIcon() actually produced on this device, so it always agrees
+  // with reality.
   const id = (iconId ?? '').trim();
-  if (id && knownIconExists(id) !== false && trySetIcon(el, id)) return;
-  if (knownIconExists(FALLBACK_ICON_ID) !== false && trySetIcon(el, FALLBACK_ICON_ID)) return;
+  if (id && trySetIcon(el, id)) return;
+  if (trySetIcon(el, FALLBACK_ICON_ID)) return;
 
   // Last resort: a short text label so the button is never blank.
   try {

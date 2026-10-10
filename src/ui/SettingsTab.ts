@@ -374,16 +374,17 @@ export class SmartPickSettingTab extends PluginSettingTab {
         });
       }
 
+      const tooltip = item.isBuiltin
+        ? getBuiltinToolbarItemLabel(item.id, item.tooltip)
+        : item.tooltip;
+
       const iconEl = tile.createDiv('smartpick-command-tile-icon');
-      setIconWithFallback(iconEl, item.icon, item.tooltip);
+      setIconWithFallback(iconEl, item.icon, tooltip);
 
       if (item.type === 'ai') {
         tile.createSpan({ text: 'AI', cls: 'smartpick-command-tile-badge' });
       }
 
-      const tooltip = item.isBuiltin
-        ? getBuiltinToolbarItemLabel(item.id, item.tooltip)
-        : item.tooltip;
       tile.setAttribute('aria-label', tooltip);
       tile.setAttribute('data-tooltip', tooltip);
       tile.setAttribute('title', tooltip);
